@@ -2,72 +2,47 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>車程範圍搜索</title>
+    <title>位置搜尋系統</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAB4Jn4cerY161yAuUskCBL7nq4LoX42Mw&libraries=places"></script>
 </head>
 <body>
     <div class="container">
-        <h1>車程範圍搜索</h1>
+        <h1>位置搜尋系統</h1>
         
-        <div class="instructions">
-            <h2>使用說明</h2>
-            <ol>
-                <li>獲取地點經緯度：
-                    <ul>
-                        <li>在 Google 地圖中右鍵點擊目標位置</li>
-                        <li>選擇「這是哪裡？」</li>
-                        <li>複製顯示的經緯度數字</li>
-                    </ul>
-                </li>
-                <li>將經緯度貼入搜索框</li>
-                <li>選擇車程時間範圍</li>
-                <li>點擊搜索按鈕</li>
-                <li>等待結果顯示（可能需要一些時間）</li>
-                <li>可以點擊「導出為CSV」下載結果</li>
-            </ol>
-        </div>
-
         <div class="input-section">
             <div class="input-group">
-                <label for="coordinates">請輸入經緯度（例如：22.293165847220834, 113.94515785564514）：</label>
-                <input type="text" id="coordinates" value="22.293165847220834, 113.94515785564514">
+                <label for="coordinates">經緯度：</label>
+                <input type="text" id="coordinates" placeholder="例如：22.293165, 113.945157">
             </div>
+
             <div class="input-group">
-                <label for="timeRange">車程時間範圍：</label>
+                <label>車程時間範圍（分鐘）：</label>
                 <select id="timeRange">
                     <option value="5">5分鐘</option>
                     <option value="10">10分鐘</option>
-                    <option value="15" selected>15分鐘</option>
+                    <option value="15">15分鐘</option>
                     <option value="20">20分鐘</option>
                 </select>
             </div>
-            <button onclick="searchPlaces()">搜索</button>
+
+            <div class="input-group">
+                <label>類別：</label>
+                <select id="category">
+                    <option value="parking">停車場</option>
+                    <option value="residential">住宅</option>
+                </select>
+            </div>
+
+            <button onclick="searchLocations()">搜尋</button>
         </div>
 
-        <div id="loading" style="display: none;">
-            <div class="spinner"></div>
-            <div class="loading-text">正在搜索中，請稍候...</div>
-            <div id="progress">已處理: 0/0</div>
-        </div>
-
-        <div id="results">
-            <table id="resultsTable" style="display: none;">
-                <thead>
-                    <tr>
-                        <th>名稱</th>
-                        <th>類型</th>
-                        <th>車程（分鐘）</th>
-                    </tr>
-                </thead>
-                <tbody id="resultsBody"></tbody>
-            </table>
-            <button id="exportButton" onclick="exportToCSV()" style="display: none;">導出為CSV</button>
+        <div class="results-section">
+            <button onclick="exportToExcel()" class="export-btn">導出為 Excel</button>
+            <div id="resultsTable"></div>
         </div>
     </div>
 
     <script src="script.js"></script>
-    <script async defer
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAB4Jn4cerY161yAuUskCBL7nq4LoX42Mw&libraries=places,geometry&callback=initMap&v=weekly">
-    </script>
 </body>
 </html> 
