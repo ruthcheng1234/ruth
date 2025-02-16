@@ -83,4 +83,23 @@ th {
 
 tr:nth-child(even) {
     background-color: #f9f9f9;
+}
+
+.search-progress {
+    margin-bottom: 20px;
+    padding: 10px;
+    background-color: #f0f8ff;
+    border-radius: 4px;
+    border: 1px solid #b8daff;
+}
+
+.progress-message {
+    color: #004085;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.progress-details {
+    color: #666;
+    font-size: 0.9em;
 } 

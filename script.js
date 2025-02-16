@@ -1,116 +1,206 @@
+// 全局變量
+let map = null;
+let placesService = null;
+let distanceService = null;
+
+// 初始化函數
+function initMap() {
+    try {
+        // 創建隱藏的地圖元素
+        const mapDiv = document.createElement('div');
+        mapDiv.style.cssText = 'height: 100px; width: 100px; display: none;';
+        document.body.appendChild(mapDiv);
+
+        // 初始化地圖
+        map = new google.maps.Map(mapDiv, {
+            center: { lat: 22.293165, lng: 113.945157 },
+            zoom: 15
+        });
+
+        // 初始化服務
+        placesService = new google.maps.places.PlacesService(map);
+        distanceService = new google.maps.DistanceMatrixService();
+
+        console.log('Google Maps API 初始化成功');
+    } catch (error) {
+        console.error('Google Maps API 初始化失敗:', error);
+        updateProgress('Google Maps API 初始化失敗，請刷新頁面重試');
+    }
+}
+
+// 檢查服務是否可用
+function checkServices() {
+    if (!map || !placesService || !distanceService) {
+        updateProgress('搜索服務未準備好，請稍後再試');
+        return false;
+    }
+    return true;
+}
+
+// 更新進度顯示
+function updateProgress(message) {
+    const progressDiv = document.getElementById('searchProgress');
+    const detailsDiv = document.getElementById('progressDetails');
+    progressDiv.style.display = 'block';
+    detailsDiv.innerHTML = '正在搜尋中...';  // 只顯示"正在搜尋中..."
+    console.log(message); // 保留詳細日誌在控制台
+}
+
+// 添加延遲函數
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// 搜索函數
 async function searchLocations() {
+    if (!map || !placesService || !distanceService) {
+        updateProgress('搜索服務未準備好，請稍後再試');
+        return;
+    }
+
     const coordinates = document.getElementById('coordinates').value;
     const timeRange = parseInt(document.getElementById('timeRange').value);
     const category = document.getElementById('category').value;
+
+    // 重置進度顯示
+    const detailsDiv = document.getElementById('progressDetails');
+    detailsDiv.innerHTML = '正在搜尋中...';
 
     if (!coordinates) {
         alert('請輸入經緯度！');
         return;
     }
 
-    const [lat, lng] = coordinates.split(',').map(coord => parseFloat(coord.trim()));
-    
     try {
-        // 創建一個隱藏的地圖元素（Places API 需要）
-        const mapDiv = document.createElement('div');
-        mapDiv.style.display = 'none';
-        document.body.appendChild(mapDiv);
+        const [lat, lng] = coordinates.split(',').map(coord => parseFloat(coord.trim()));
         
-        const map = new google.maps.Map(mapDiv, {
-            center: { lat, lng },
-            zoom: 15
-        });
-
-        // 創建服務
-        const placesService = new google.maps.places.PlacesService(map);
-        const distanceService = new google.maps.DistanceMatrixService();
-
-        // 設置搜索半徑（以米為單位）
-        const radius = Math.min(50000, (timeRange * 60 * 1000) / 60); // 最大50公里
-
-        // 設置搜索關鍵字
-        let keywords = [];
-        if (category === 'parking') {
-            keywords = ['停車場', 'car park', 'parking'];
-        } else {
-            keywords = ['住宅', '屋苑', 'residential'];
+        if (isNaN(lat) || isNaN(lng)) {
+            detailsDiv.innerHTML = '無效的經緯度格式';
+            return;
         }
 
-        // 使用多個關鍵字進行搜索
-        let allPlaces = [];
-        for (const keyword of keywords) {
-            const request = {
-                location: new google.maps.LatLng(lat, lng),
-                radius: radius,
-                keyword: keyword,
-                type: category === 'parking' ? 'parking' : 'establishment'
-            };
+        updateProgress('開始搜索...');
 
-            try {
-                const places = await new Promise((resolve, reject) => {
-                    placesService.nearbySearch(request, (results, status) => {
-                        if (status === google.maps.places.PlacesServiceStatus.OK) {
-                            resolve(results);
-                        } else if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-                            resolve([]);
-                        } else {
-                            console.warn(`搜索關鍵字 "${keyword}" 時狀態: ${status}`);
-                            resolve([]);
-                        }
+        // 設置多個搜索半徑（以米為單位）
+        const radiusList = [
+            1000,  // 1公里
+            2000,  // 2公里
+            5000,  // 5公里
+            10000, // 10公里
+            20000, // 20公里
+            50000  // 50公里
+        ].filter(r => r <= (timeRange * 60 * 1000) / 60);
+
+        // 搜索配置
+        const searchConfig = {
+            parking: {
+                keywords: [
+                    '停車場', '泊車場', '室內停車場', '地下停車場',
+                    'car park', 'parking', 'indoor parking', 
+                    'underground parking'
+                ],
+                excludeTerms: [
+                    '路邊', '單車', '傷殘', '電單車', '臨時',
+                    'motorcycle', 'bicycle', 'disabled'
+                ],
+                types: ['parking']
+            },
+            residential: {
+                keywords: [
+                    '屋苑', '住宅', '大廈', '樓', '苑', '村', '村屋',
+                    '私人住宅', '公共住宅', 'estate', 'residential',
+                    'apartment', 'housing', 'mansion', 'tower'
+                ],
+                types: ['establishment']
+            }
+        };
+
+        const config = searchConfig[category];
+        let allPlaces = new Map(); // 使用 Map 來存儲唯一的地點
+
+        // 對每個半徑進行搜索
+        for (const radius of radiusList) {
+            updateProgress(`搜索半徑 ${radius/1000} 公里範圍...`);
+            
+            // 對每個關鍵字進行搜索
+            for (const keyword of config.keywords) {
+                try {
+                    updateProgress(`正在搜索關鍵字: ${keyword} (半徑: ${radius/1000}公里)`);
+                    
+                    const request = {
+                        location: new google.maps.LatLng(lat, lng),
+                        radius: radius,
+                        keyword: keyword,
+                        type: category === 'parking' ? 'parking' : null
+                    };
+
+                    const places = await new Promise((resolve) => {
+                        placesService.nearbySearch(request, (results, status) => {
+                            if (status === google.maps.places.PlacesServiceStatus.OK) {
+                                resolve(results);
+                            } else {
+                                console.warn(`搜索 "${keyword}" 狀態: ${status}`);
+                                resolve([]);
+                            }
+                        });
                     });
-                });
 
-                if (places && places.length > 0) {
-                    allPlaces = allPlaces.concat(places);
+                    // 將結果添加到 Map 中，使用 place_id 作為鍵以去重
+                    if (places && places.length > 0) {
+                        places.forEach(place => {
+                            if (!allPlaces.has(place.place_id)) {
+                                allPlaces.set(place.place_id, place);
+                            }
+                        });
+                        updateProgress(`在 ${radius/1000}公里範圍內找到 ${places.length} 個地點`);
+                    }
+
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                } catch (error) {
+                    console.error(`搜索 "${keyword}" 時出錯:`, error);
                 }
-
-                // 添加短暫延遲
-                await new Promise(resolve => setTimeout(resolve, 200));
-            } catch (error) {
-                console.error(`搜索關鍵字 "${keyword}" 時發生錯誤:`, error);
             }
         }
 
-        // 去重
-        allPlaces = Array.from(new Set(allPlaces.map(place => place.place_id)))
-            .map(id => allPlaces.find(place => place.place_id === id))
-            .filter(place => {
-                if (category === 'parking') {
-                    const name = place.name.toLowerCase();
-                    return !name.includes('路邊') && 
-                           !name.includes('單車') && 
-                           !name.includes('傷殘') &&
-                           !name.includes('電單車');
-                }
-                return true;
-            });
+        // 將 Map 轉換回數組
+        let placesArray = Array.from(allPlaces.values());
 
-        // 計算距離
-        if (allPlaces.length === 0) {
+        // 過濾
+        placesArray = placesArray.filter(place => {
+            if (category === 'parking') {
+                const name = place.name.toLowerCase();
+                return !config.excludeTerms.some(term => 
+                    name.includes(term.toLowerCase())
+                );
+            }
+            return true;
+        });
+
+        updateProgress(`過濾完成，找到 ${placesArray.length} 個有效地點`);
+
+        if (placesArray.length === 0) {
             displayResults([]);
             return;
         }
 
+        // 計算距離
         const batchSize = 25;
         let results = [];
 
-        for (let i = 0; i < allPlaces.length; i += batchSize) {
-            const batch = allPlaces.slice(i, i + batchSize);
-            const destinations = batch.map(place => place.geometry.location);
-            const origin = new google.maps.LatLng(lat, lng);
-
+        for (let i = 0; i < placesArray.length; i += batchSize) {
+            const batch = placesArray.slice(i, i + batchSize);
             try {
+                updateProgress(`正在計算第 ${i + 1} 至 ${Math.min(i + batchSize, placesArray.length)} 個地點的車程...`);
+
                 const distanceResult = await new Promise((resolve, reject) => {
                     distanceService.getDistanceMatrix({
-                        origins: [origin],
-                        destinations: destinations,
+                        origins: [new google.maps.LatLng(lat, lng)],
+                        destinations: batch.map(place => place.geometry.location),
                         travelMode: google.maps.TravelMode.DRIVING,
                         unitSystem: google.maps.UnitSystem.METRIC
                     }, (response, status) => {
                         if (status === 'OK') {
                             resolve(response);
                         } else {
-                            reject(new Error('計算距離失敗: ' + status));
+                            reject(new Error(`距離計算失敗: ${status}`));
                         }
                     });
                 });
@@ -134,27 +224,23 @@ async function searchLocations() {
                 }).filter(result => result !== null);
 
                 results = results.concat(batchResults);
-
-                // 添加短暫延遲
-                await new Promise(resolve => setTimeout(resolve, 200));
             } catch (error) {
-                console.error('計算距離時發生錯誤:', error);
+                console.error('距離計算錯誤:', error);
+                updateProgress('部分距離計算失敗');
             }
         }
 
-        // 按車程時間排序
+        // 排序結果
         results.sort((a, b) => {
             const timeA = parseInt(a.drivingTime.match(/\d+/)[0]);
             const timeB = parseInt(b.drivingTime.match(/\d+/)[0]);
             return timeA - timeB;
         });
 
+        updateProgress(`搜索完成！找到 ${results.length} 個符合條件的地點`);
         displayResults(results);
-
-        // 清理臨時創建的地圖元素
-        document.body.removeChild(mapDiv);
     } catch (error) {
-        alert('搜尋過程中發生錯誤：' + error.message);
+        detailsDiv.innerHTML = '搜索過程中發生錯誤';
         console.error(error);
     }
 }
